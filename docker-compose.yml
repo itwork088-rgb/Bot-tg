@@ -1,0 +1,22 @@
+services:
+  ritm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ritm:local
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    environment:
+      PORT: "${PORT:-8000}"
+      DATABASE_PATH: "${DATABASE_PATH:-/data/ritm.sqlite3}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      MAKE_WEBHOOK_URL: "${MAKE_WEBHOOK_URL:-}"
+      MCP_AUTH_TOKEN: "${MCP_AUTH_TOKEN:-}"
+      MCP_ALLOWED_TELEGRAM_USER_IDS: "${MCP_ALLOWED_TELEGRAM_USER_IDS:-}"
+    volumes:
+      - ritm-data:/data
+
+volumes:
+  ritm-data:
+    name: ritm-data

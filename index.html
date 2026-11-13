@@ -3,108 +3,230 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#101114" />
+    <meta name="theme-color" content="#f5f6fb" />
+    <meta name="description" content="Ритм — привычки на каждый день." />
     <title>Ритм — привычки на каждый день</title>
     <link rel="stylesheet" href="/styles.css" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <main class="app-shell">
+    <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#" aria-label="Ритм — на главную">
+        <a class="brand" href="#" data-tab="home" aria-label="Ритм — главная">
           <span class="brand-mark" aria-hidden="true">р</span>
           <span>ритм<span class="brand-period">.</span></span>
         </a>
-        <button class="avatar" id="profile-button" type="button" aria-label="Профиль">
-          <span id="avatar-letter">А</span>
-          <span class="online-dot" aria-hidden="true"></span>
-        </button>
-      </header>
-
-      <section class="greeting" aria-labelledby="greeting-title">
-        <div>
-          <p class="eyebrow" id="today-label"></p>
-          <h1 id="greeting-title">Маленькие шаги.<br /><span>Большой результат.</span></h1>
-          <p class="greeting-copy">Ты создаёшь ритм, который работает на тебя.</p>
-        </div>
-        <div class="streak-card">
-          <span class="streak-flame" aria-hidden="true">✦</span>
-          <strong id="streak-count">7</strong>
-          <span>дней подряд</span>
-        </div>
-      </section>
-
-      <section class="progress-panel" aria-label="Прогресс на сегодня">
-        <div class="progress-copy">
-          <div>
-            <p class="eyebrow">ТВОЙ ПРОГРЕСС</p>
-            <p class="progress-number"><span id="done-count">0</span><span class="progress-divider"> / </span><span id="total-count">0</span><span class="progress-unit"> привычек</span></p>
-          </div>
-          <span class="progress-percent" id="progress-percent">0%</span>
-        </div>
-        <div class="progress-track" role="progressbar" aria-label="Выполнено привычек" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track">
-          <span class="progress-fill" id="progress-fill"></span>
-        </div>
-        <p class="progress-footnote" id="progress-message">Начни с одной привычки — этого достаточно.</p>
-      </section>
-
-      <section class="habits-section" aria-labelledby="habits-heading">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">ТВОЙ ПЛАН</p>
-            <h2 id="habits-heading">На сегодня</h2>
-          </div>
-          <button class="add-button" id="add-habit-button" type="button">
-            <span aria-hidden="true">＋</span> Добавить
+        <div class="topbar-right">
+          <span class="sync-indicator" id="sync-indicator"><span class="sync-dot"></span><span id="sync-label">На устройстве</span></span>
+          <button class="avatar" id="profile-button" type="button" data-tab="profile" aria-label="Открыть профиль">
+            <span id="avatar-letter">Р</span>
           </button>
         </div>
-        <div class="habit-list" id="habit-list"></div>
-        <div class="empty-state" id="empty-state" hidden>
-          <span class="empty-icon" aria-hidden="true">✳</span>
-          <strong>Здесь появится твой первый ритуал</strong>
-          <p>Начни с чего-то простого и приятного.</p>
-          <button class="text-button" id="empty-add-button" type="button">Добавить привычку <span aria-hidden="true">→</span></button>
-        </div>
-      </section>
+      </header>
 
-      <section class="week-section" aria-labelledby="week-heading">
-        <div class="section-heading week-heading">
-          <div>
-            <p class="eyebrow">НЕБОЛЬШОЙ ПРОГРЕСС</p>
-            <h2 id="week-heading">Эта неделя</h2>
+      <main>
+        <section class="page-view is-active" data-page="home" aria-labelledby="greeting-title">
+          <section class="greeting">
+            <div>
+              <p class="eyebrow" id="today-label"></p>
+              <h1 id="greeting-title">Добро пожаловать<span id="greeting-name"></span></h1>
+              <p class="greeting-copy">Маленькие шаги складываются в большой результат.</p>
+            </div>
+          </section>
+
+          <section class="today-card" aria-labelledby="today-heading">
+            <div class="today-copy">
+              <p class="eyebrow">ТВОЙ СЕГОДНЯШНИЙ РИТМ</p>
+              <h2 id="today-heading">В своём темпе</h2>
+              <p class="today-summary"><strong id="done-count">0</strong><span> из </span><strong id="total-count">0</strong><span> привычек выполнено</span><span class="summary-separator" aria-hidden="true">·</span><strong id="remaining-count">0</strong><span> осталось</span></p>
+              <p class="progress-message" id="progress-message">Добавь первую привычку, чтобы задать свой ритм.</p>
+            </div>
+            <div class="progress-ring" id="progress-ring" role="progressbar" aria-label="Прогресс привычек за сегодня" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="progress-ring-inner">
+                <strong id="progress-percent">0%</strong>
+                <span>сегодня</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="home-shortcuts" aria-label="Краткая статистика">
+            <article class="metric-card">
+              <span class="metric-icon metric-icon-purple" aria-hidden="true">✦</span>
+              <div><strong id="home-streak">0</strong><span id="home-streak-unit">дней ритма</span></div>
+            </article>
+            <article class="metric-card">
+              <span class="metric-icon metric-icon-blue" aria-hidden="true">✓</span>
+              <div><strong id="home-week-total">0</strong><span>выполнений за 7 дней</span></div>
+            </article>
+          </section>
+
+          <section class="home-habits" aria-labelledby="home-habits-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">НЕБОЛЬШОЙ ШАГ НА СЕГОДНЯ</p>
+                <h2 id="home-habits-heading">Твои привычки</h2>
+              </div>
+              <button class="text-link" type="button" data-tab="habits">Все привычки <span aria-hidden="true">→</span></button>
+            </div>
+            <div class="habit-list habit-list-compact" id="home-habit-list"></div>
+            <div class="empty-state" id="home-empty-state" hidden>
+              <span class="empty-icon" aria-hidden="true">✳</span>
+              <strong>Твой ритм начинается с малого</strong>
+              <p>Добавь первую привычку — мы поможем не забыть о ней.</p>
+              <button class="primary-button" type="button" data-action="add">Создать привычку <span aria-hidden="true">＋</span></button>
+            </div>
+          </section>
+        </section>
+
+        <section class="page-view" data-page="habits" aria-labelledby="habits-heading" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">ТВОЙ ПЛАН</p>
+              <h1 id="habits-heading">Привычки</h1>
+              <p class="page-description">Регулярность важнее идеального темпа.</p>
+            </div>
+            <button class="primary-button add-button" id="add-habit-button" type="button"><span aria-hidden="true">＋</span> Добавить</button>
           </div>
-          <span class="week-total" id="week-total">0 выполнено</span>
-        </div>
-        <div class="week-grid" id="week-grid" aria-label="Привычки за последние семь дней"></div>
-      </section>
+          <div class="loading-state" id="loading-state" hidden><span class="spinner" aria-hidden="true"></span>Загружаем твои привычки…</div>
+          <div class="habit-list" id="habit-list" aria-live="polite"></div>
+          <div class="empty-state" id="empty-state" hidden>
+            <span class="empty-icon" aria-hidden="true">✳</span>
+            <strong>Здесь появится твоя первая привычка</strong>
+            <p>Выбери что-то простое и важное для себя.</p>
+            <button class="primary-button" id="empty-add-button" type="button">Добавить привычку <span aria-hidden="true">＋</span></button>
+          </div>
+        </section>
 
-      <footer class="app-footer">
-        <span class="footer-spark" aria-hidden="true">✳</span>
-        <span>Не идеально. Зато регулярно.</span>
-      </footer>
-    </main>
+        <section class="page-view" data-page="stats" aria-labelledby="stats-heading" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">ТВОЙ ПРОГРЕСС</p>
+              <h1 id="stats-heading">Статистика</h1>
+              <p class="page-description">Каждый отмеченный день — уже результат.</p>
+            </div>
+          </div>
+          <div class="stats-grid">
+            <article class="stat-card stat-card-accent">
+              <span class="stat-label">Сегодня</span>
+              <strong id="stats-today">0</strong>
+              <span class="stat-foot" id="stats-today-note">из 0 привычек</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Последние 7 дней</span>
+              <strong id="stats-week">0</strong>
+              <span class="stat-foot">выполнений</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Последние 60 дней</span>
+              <strong id="stats-total">0</strong>
+              <span class="stat-foot">выполнений в истории</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Серия активности</span>
+              <strong><span id="streak-count">0</span><small id="streak-unit">дней</small></strong>
+              <span class="stat-foot">хотя бы одно выполнение в день</span>
+            </article>
+          </div>
+
+          <section class="content-card calendar-card" aria-labelledby="calendar-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">ПОСЛЕДНИЕ 28 ДНЕЙ</p>
+                <h2 id="calendar-heading">Календарь активности</h2>
+              </div>
+              <span class="calendar-legend"><i aria-hidden="true"></i> есть выполнение</span>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+            </div>
+            <div class="calendar-grid" id="calendar-grid" aria-label="Активность за последние 28 дней"></div>
+            <div class="history-detail" id="history-detail" aria-live="polite"></div>
+          </section>
+
+          <section class="content-card week-card" aria-labelledby="week-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">ПО ДНЯМ</p>
+                <h2 id="week-heading">Последние 7 дней</h2>
+              </div>
+              <span class="week-total" id="week-total">0 выполнений</span>
+            </div>
+            <div class="week-grid" id="week-grid" aria-label="Привычки за последние семь дней"></div>
+          </section>
+        </section>
+
+        <section class="page-view" data-page="profile" aria-labelledby="profile-heading" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">ТВОЁ ПРОСТРАНСТВО</p>
+              <h1 id="profile-heading">Профиль</h1>
+              <p class="page-description">Твои данные и состояние синхронизации.</p>
+            </div>
+          </div>
+          <section class="content-card profile-card">
+            <div class="profile-identity">
+              <span class="profile-avatar" id="profile-avatar">Р</span>
+              <div><strong id="profile-name">Личный профиль</strong><span id="profile-subtitle">Ритм — привычки на каждый день</span></div>
+            </div>
+            <div class="profile-divider"></div>
+            <div class="profile-row"><span>Режим хранения</span><strong id="profile-storage">На устройстве</strong></div>
+            <div class="profile-row"><span>Синхронизация с облаком</span><strong id="profile-cloud">Проверяем…</strong></div>
+            <div class="profile-row"><span>Автоматизация Make.com</span><strong id="profile-make">Проверяем…</strong></div>
+          </section>
+          <p class="profile-note">Привычки и история хранятся на сервере приложения, когда ты открываешь его через Telegram. В обычном браузере изменения остаются на этом устройстве.</p>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Основная навигация">
+        <button class="nav-item is-active" type="button" data-tab="home" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.5 10 8.5-7 8.5 7v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19z"/><path d="M9 20.5v-7h6v7"/></svg><span>Главная</span>
+        </button>
+        <button class="nav-item" type="button" data-tab="habits">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h12M8 12h12M8 19h12"/><path d="m3 5 1 1 2-2M3 12l1 1 2-2M3 19l1 1 2-2"/></svg><span>Привычки</span>
+        </button>
+        <button class="nav-item" type="button" data-tab="stats">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V12m5 7.5V5m5 14.5v-5m5 5V8"/></svg><span>Статистика</span>
+        </button>
+        <button class="nav-item" type="button" data-tab="profile">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg><span>Профиль</span>
+        </button>
+      </nav>
+    </div>
 
     <dialog class="habit-dialog" id="habit-dialog" aria-labelledby="dialog-title">
       <form id="habit-form">
         <div class="dialog-top">
-          <div>
-            <p class="eyebrow">НОВЫЙ РИТУАЛ</p>
-            <h2 id="dialog-title">Добавить привычку</h2>
-          </div>
-          <button class="close-button" id="close-dialog-button" type="button" aria-label="Закрыть">×</button>
+          <div><p class="eyebrow">НОВЫЙ РИТУАЛ</p><h2 id="dialog-title">Добавить привычку</h2></div>
+          <button class="icon-button close-button" id="close-dialog-button" type="button" aria-label="Закрыть">×</button>
         </div>
         <label class="field-label" for="habit-title">Как назовём?</label>
-        <input id="habit-title" name="title" maxlength="60" placeholder="Например, выпить стакан воды" required />
+        <input id="habit-title" name="title" maxlength="60" placeholder="Например, выпить стакан воды" autocomplete="off" required />
+        <label class="field-label" for="habit-time">Подсказка или время <span class="optional-label">необязательно</span></label>
+        <input id="habit-time" name="time" maxlength="60" placeholder="Например, после завтрака" autocomplete="off" />
         <p class="field-label">Выбери символ</p>
         <div class="icon-options" id="icon-options" role="radiogroup" aria-label="Символ привычки">
-          <button class="icon-option is-selected" type="button" data-icon="✳" aria-pressed="true">✳</button>
-          <button class="icon-option" type="button" data-icon="◌" aria-pressed="false">◌</button>
-          <button class="icon-option" type="button" data-icon="↗" aria-pressed="false">↗</button>
-          <button class="icon-option" type="button" data-icon="♡" aria-pressed="false">♡</button>
-          <button class="icon-option" type="button" data-icon="☼" aria-pressed="false">☼</button>
+          <button class="icon-option is-selected" type="button" data-icon="✳" aria-pressed="true" aria-label="Звезда">✳</button>
+          <button class="icon-option" type="button" data-icon="◌" aria-pressed="false" aria-label="Круг">◌</button>
+          <button class="icon-option" type="button" data-icon="↗" aria-pressed="false" aria-label="Стрелка">↗</button>
+          <button class="icon-option" type="button" data-icon="♡" aria-pressed="false" aria-label="Сердце">♡</button>
+          <button class="icon-option" type="button" data-icon="☼" aria-pressed="false" aria-label="Солнце">☼</button>
         </div>
-        <button class="submit-button" type="submit">Создать привычку <span aria-hidden="true">→</span></button>
+        <button class="primary-button submit-button" type="submit">Создать привычку <span aria-hidden="true">→</span></button>
+      </form>
+    </dialog>
+
+    <dialog class="habit-dialog confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+      <form method="dialog">
+        <div class="dialog-top">
+          <div><p class="eyebrow">УДАЛЕНИЕ</p><h2 id="confirm-title">Удалить привычку?</h2></div>
+          <button class="icon-button close-button" type="submit" value="cancel" aria-label="Закрыть">×</button>
+        </div>
+        <p class="confirm-copy" id="confirm-copy"></p>
+        <div class="confirm-actions">
+          <button class="secondary-button" type="submit" value="cancel">Оставить</button>
+          <button class="danger-button" type="submit" value="delete">Удалить</button>
+        </div>
       </form>
     </dialog>
 
