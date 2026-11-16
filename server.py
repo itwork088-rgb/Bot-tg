@@ -5,7 +5,15 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # SQLite remains usable when PostgreSQL support is not installed.
+    psycopg = None
+    dict_row = None
 import threading
 import time
 import urllib.error
@@ -30,6 +38,10 @@ SUPPORTED_MCP_VERSIONS = {
     "2025-06-18",
     "2025-11-25",
 }
+
+DATABASE_ERRORS = (sqlite3.Error,) + ((psycopg.Error,) if psycopg else ())
+INTEGRITY_ERRORS = (sqlite3.IntegrityError,) + ((psycopg.IntegrityError,) if psycopg else ())
+DELIVERY_ERRORS = (urllib.error.URLError, TimeoutError, ValueError) + DATABASE_ERRORS
 
 
 def verify_telegram_init_data(init_data, bot_token):
@@ -107,65 +119,181 @@ def validate_habit(habit):
     }
 
 
-class HabitStore:
-    def __init__(self, path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS accounts (
-                    user_id TEXT PRIMARY KEY,
-                    initialized INTEGER NOT NULL DEFAULT 0,
-                    first_name TEXT NOT NULL DEFAULT '',
-                    created_at INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS habits (
-                    user_id TEXT NOT NULL,
-                    id TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    icon TEXT NOT NULL,
-                    time_label TEXT NOT NULL,
-                    created_at INTEGER NOT NULL,
-                    deleted_at INTEGER,
-                    PRIMARY KEY (user_id, id)
-                );
-                CREATE TABLE IF NOT EXISTS completions (
-                    user_id TEXT NOT NULL,
-                    habit_id TEXT NOT NULL,
-                    completion_date TEXT NOT NULL,
-                    completed_at INTEGER NOT NULL,
-                    PRIMARY KEY (user_id, habit_id, completion_date)
-                );
-                CREATE TABLE IF NOT EXISTS make_outbox (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id TEXT NOT NULL UNIQUE,
-                    user_id TEXT NOT NULL,
-                    payload TEXT NOT NULL,
-                    created_at INTEGER NOT NULL,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    next_attempt_at INTEGER NOT NULL,
-                    delivered_at INTEGER,
-                    last_error TEXT
-                );
-                CREATE INDEX IF NOT EXISTS make_outbox_pending
-                    ON make_outbox (delivered_at, next_attempt_at);
-                """
+class PostgresConnection:
+    """Compatibility adapter allowing HabitStore to share SQLite-style queries."""
+
+    def __init__(self, connection):
+        self.connection = connection
+
+    @staticmethod
+    def _prepare(sql):
+        query = sql.strip()
+        if query.upper() == "BEGIN IMMEDIATE":
+            return None
+        ignore_conflicts = bool(re.match(r"INSERT\s+OR\s+IGNORE\s+INTO\b", query, re.IGNORECASE))
+        if ignore_conflicts:
+            query = re.sub(
+                r"INSERT\s+OR\s+IGNORE\s+INTO\b", "INSERT INTO",
+                query, count=1, flags=re.IGNORECASE,
             )
-            account_columns = {
-                row["name"] for row in connection.execute("PRAGMA table_info(accounts)")
-            }
-            if "first_name" not in account_columns:
-                connection.execute(
-                    "ALTER TABLE accounts ADD COLUMN first_name TEXT NOT NULL DEFAULT ''"
+        query = query.replace("?", "%s")
+        query = query.replace(
+            "MAX(accounts.initialized, excluded.initialized)",
+            "GREATEST(accounts.initialized, EXCLUDED.initialized)",
+        )
+        if ignore_conflicts:
+            query = query.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+        return query
+
+    def execute(self, sql, params=()):
+        query = self._prepare(sql)
+        if query is None:
+            return self.connection.cursor()
+        return self.connection.execute(query, params)
+
+    def executemany(self, sql, seq_of_params):
+        query = self._prepare(sql)
+        if query is None:
+            return self.connection.cursor()
+        return self.connection.cursor().executemany(query, seq_of_params)
+
+    def executescript(self, script):
+        cursor = self.connection.cursor()
+        for statement in script.split(";"):
+            if statement.strip():
+                cursor.execute(statement)
+        return cursor
+
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
+
+    def close(self):
+        self.connection.close()
+
+
+class HabitStore:
+    def __init__(self, path, database_url=None):
+        self.database_url = (database_url or "").strip()
+        if self.database_url.startswith("postgres://"):
+            self.database_url = "postgresql://" + self.database_url[len("postgres://"):]
+        self.is_postgres = bool(self.database_url)
+
+        if self.is_postgres:
+            if psycopg is None:
+                raise RuntimeError("Для PostgreSQL установи зависимость psycopg[binary].")
+            with self.connect() as connection:
+                connection.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS accounts (
+                        user_id TEXT PRIMARY KEY,
+                        initialized INTEGER NOT NULL DEFAULT 0,
+                        first_name TEXT NOT NULL DEFAULT '',
+                        created_at BIGINT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS habits (
+                        user_id TEXT NOT NULL,
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        icon TEXT NOT NULL,
+                        time_label TEXT NOT NULL,
+                        created_at BIGINT NOT NULL,
+                        deleted_at BIGINT,
+                        PRIMARY KEY (user_id, id)
+                    );
+                    CREATE TABLE IF NOT EXISTS completions (
+                        user_id TEXT NOT NULL,
+                        habit_id TEXT NOT NULL,
+                        completion_date TEXT NOT NULL,
+                        completed_at BIGINT NOT NULL,
+                        PRIMARY KEY (user_id, habit_id, completion_date)
+                    );
+                    CREATE TABLE IF NOT EXISTS make_outbox (
+                        id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                        event_id TEXT NOT NULL UNIQUE,
+                        user_id TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        created_at BIGINT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        next_attempt_at BIGINT NOT NULL,
+                        delivered_at BIGINT,
+                        last_error TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS make_outbox_pending
+                        ON make_outbox (delivered_at, next_attempt_at);
+                    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS
+                        first_name TEXT NOT NULL DEFAULT '';
+                    """
                 )
+        else:
+            self.path = Path(path)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.connect() as connection:
+                connection.execute("PRAGMA journal_mode = WAL")
+                connection.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS accounts (
+                        user_id TEXT PRIMARY KEY,
+                        initialized INTEGER NOT NULL DEFAULT 0,
+                        first_name TEXT NOT NULL DEFAULT '',
+                        created_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS habits (
+                        user_id TEXT NOT NULL,
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        icon TEXT NOT NULL,
+                        time_label TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        deleted_at INTEGER,
+                        PRIMARY KEY (user_id, id)
+                    );
+                    CREATE TABLE IF NOT EXISTS completions (
+                        user_id TEXT NOT NULL,
+                        habit_id TEXT NOT NULL,
+                        completion_date TEXT NOT NULL,
+                        completed_at INTEGER NOT NULL,
+                        PRIMARY KEY (user_id, habit_id, completion_date)
+                    );
+                    CREATE TABLE IF NOT EXISTS make_outbox (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id TEXT NOT NULL UNIQUE,
+                        user_id TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        next_attempt_at INTEGER NOT NULL,
+                        delivered_at INTEGER,
+                        last_error TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS make_outbox_pending
+                        ON make_outbox (delivered_at, next_attempt_at);
+                    """
+                )
+                account_columns = {
+                    row["name"] for row in connection.execute("PRAGMA table_info(accounts)")
+                }
+                if "first_name" not in account_columns:
+                    connection.execute(
+                        "ALTER TABLE accounts ADD COLUMN first_name TEXT NOT NULL DEFAULT ''"
+                    )
 
     @contextmanager
     def connect(self):
-        connection = sqlite3.connect(self.path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 30000")
+        if self.is_postgres:
+            raw_connection = psycopg.connect(
+                self.database_url,
+                row_factory=dict_row,
+                connect_timeout=10,
+            )
+            connection = PostgresConnection(raw_connection)
+        else:
+            raw_connection = sqlite3.connect(self.path, timeout=30)
+            raw_connection.row_factory = sqlite3.Row
+            raw_connection.execute("PRAGMA busy_timeout = 30000")
+            connection = raw_connection
         try:
             yield connection
             connection.commit()
@@ -454,8 +582,9 @@ class HabitStore:
 
 
 def configured_store():
+    database_url = os.environ.get("DATABASE_URL", "").strip()
     path = os.environ.get("DATABASE_PATH", str(ROOT / "data" / "ritm.sqlite3"))
-    return HabitStore(path)
+    return HabitStore(path, database_url=database_url or None)
 
 
 STORE = None
@@ -496,7 +625,7 @@ def make_delivery_error(error):
         return f"Make.com connection failed ({type(error.reason).__name__})."
     if isinstance(error, TimeoutError):
         return "Make.com request timed out."
-    if isinstance(error, sqlite3.Error):
+    if isinstance(error, DATABASE_ERRORS):
         return "Local Make.com outbox database error."
     return "Make.com webhook is not configured."
 
@@ -507,19 +636,19 @@ def run_outbox():
             continue
         try:
             events = get_store().next_outbox_events(int(time.time()))
-        except sqlite3.Error as error:
+        except DATABASE_ERRORS as error:
             print(f"Make.com outbox read failed: {error}")
             continue
         for event in events:
             try:
                 send_make_event(json.loads(event["payload"]))
                 get_store().mark_delivered(event["event_id"])
-            except (urllib.error.URLError, TimeoutError, ValueError, sqlite3.Error) as error:
+            except DELIVERY_ERRORS as error:
                 safe_error = make_delivery_error(error)
                 print(f"Make.com event delivery failed: {safe_error}")
                 try:
                     get_store().mark_failed(event["event_id"], event["attempts"] + 1, safe_error)
-                except sqlite3.Error as database_error:
+                except DATABASE_ERRORS as database_error:
                     print(f"Make.com outbox update failed: {database_error}")
                 break
 
@@ -723,7 +852,7 @@ def handle_mcp_request(payload):
                 "structuredContent": result,
                 "isError": False,
             }
-        except (ValueError, PermissionError, LookupError, sqlite3.Error) as error:
+        except (ValueError, PermissionError, LookupError) + DATABASE_ERRORS as error:
             response = {
                 "content": [{"type": "text", "text": str(error)}],
                 "isError": True,
@@ -773,7 +902,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 ))
             except ValueError as error:
                 self.send_json(400, {"error": str(error)})
-            except sqlite3.Error as error:
+            except DATABASE_ERRORS as error:
                 print(f"Failed to load habits: {error}")
                 self.send_json(500, {"error": "Не удалось загрузить привычки с сервера."})
             return
@@ -847,7 +976,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 str(user.get("first_name", "")),
             )
             self.send_json(200, {"ok": True, "imported": imported})
-        except (ValueError, sqlite3.Error) as error:
+        except (ValueError,) + DATABASE_ERRORS as error:
             print(f"Failed to bootstrap habits: {error}")
             self.send_json(400 if isinstance(error, ValueError) else 500, {"error": str(error)})
 
@@ -870,10 +999,10 @@ class AppHandler(SimpleHTTPRequestHandler):
         except LookupError as error:
             self.send_json(404, {"error": str(error)})
             return
-        except sqlite3.IntegrityError:
+        except INTEGRITY_ERRORS:
             self.send_json(409, {"error": "Привычка с таким идентификатором уже существует."})
             return
-        except sqlite3.Error as error:
+        except DATABASE_ERRORS as error:
             print(f"Failed to store habit event: {error}")
             self.send_json(500, {"error": "Не удалось сохранить изменение на сервере."})
             return
